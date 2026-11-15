@@ -203,13 +203,24 @@ details.dq summary{cursor:pointer;font-weight:600}
 .ring.y{background:conic-gradient(#f2b705 calc(var(--p)*1%),var(--track) 0)}
 .ring.r{background:conic-gradient(#e0342b calc(var(--p)*1%),var(--track) 0)}
 .stat strong.g{color:var(--tr)}.stat strong.y{color:var(--ty)}.stat strong.r{color:var(--trd)}
+.fb{border-radius:12px;padding:10px 12px;font-size:14px;font-weight:600;margin-bottom:14px;background:var(--card);border:1px solid var(--line)}
+.fb.g{background:color-mix(in srgb,#34c759 14%,var(--card));border-color:#2ca34a}
+.fb.y{background:color-mix(in srgb,#ffcc00 20%,var(--card));border-color:#d9a400}
+.fb.r{background:color-mix(in srgb,#ff3b30 14%,var(--card));border-color:#e0342b}
+.big.pz{background:var(--track);color:var(--ink)}
+.tring.ps{opacity:.6}
+.rnbox{position:fixed;z-index:50;width:240px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;box-shadow:0 14px 40px -10px rgba(0,0,0,.35);display:grid;gap:8px}
+.rnbox label{display:grid;gap:4px;font-size:13px;color:var(--mut)}
+.rnbox div{display:flex;gap:8px;justify-content:flex-end}
+.rnbox button{border:0;border-radius:99px;padding:7px 14px;font-weight:600;cursor:pointer;background:var(--track);color:var(--ink)}
+.rnbox .rn-s{background:var(--acc);color:#fff}
 </style>
 </head>
 <body>
 <div class="wrap" id="app"></div>
 <script>
 const KEY='estudos-v1';
-let S={subjects:[],plan:{},logs:[],cfg:{day:120,study:45,rev:15},sched:null,cards:[],qs:[],sims:[],exam:null};
+let S={subjects:[],plan:{},logs:[],cfg:{day:120,study:45,rev:15},sched:null,cards:[],qs:[],sims:[],exam:null,fsubs:[],fcfg:{wd:true,rv:'we'}};
 try{const r=localStorage.getItem(KEY);if(r)S=Object.assign(S,JSON.parse(r))}catch(e){}
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 const uid=()=>Math.random().toString(36).slice(2,9);
@@ -217,7 +228,7 @@ const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'
 const COLORS=['#007aff','#34c759','#ff9500','#ff2d55','#af52de','#32ade6'];
 const DAYS=['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'];
 let tab=S.subjects.length?'cronograma':'materias';
-const sub=id=>S.subjects.find(s=>s.id===id);
+const sub=id=>S.subjects.find(s=>s.id===id)||S.fsubs.find(s=>s.id===id);
 const col=s=>(s&&s.c)||'#c9d3e6';
 const done=s=>s.topics.filter(t=>t.done).length;
 const pct=s=>s.topics.length?Math.round(done(s)/s.topics.length*100):0;
@@ -233,13 +244,13 @@ const br=s=>new Date(s+'T00:00').toLocaleDateString('pt-BR',{weekday:'short',day
 function gen(){
   const t0=today(),c=S.cfg;
   const keep=(S.sched&&S.sched.d===t0)?S.sched.items.filter(i=>i.done):[];
-  let left=c.day-keep.reduce((a,i)=>a+i.min,0);const items=[...keep];
+  let left=c.day-keep.filter(i=>!i.fac).reduce((a,i)=>a+i.min,0);const items=[...keep];
   const due=[];S.subjects.forEach(s=>s.topics.forEach(t=>{if(t.done&&t.next&&t.next<=t0)due.push({s,t})}));
   due.sort((a,b)=>a.t.next.localeCompare(b.t.next));
   for(const x of due){if(left<c.rev)break;items.push({id:uid(),sid:x.s.id,tid:x.t.id,type:'rev',min:c.rev,done:false});left-=c.rev}
   const q=S.subjects.map(s=>s.topics.filter(t=>!t.done).map(t=>({s,t})));let i=0;
   while(left>=c.study&&q.some(a=>a.length)){const a=q[i%q.length];i++;if(!a.length)continue;const x=a.shift();items.push({id:uid(),sid:x.s.id,tid:x.t.id,type:'new',min:c.study,done:false});left-=c.study}
-  S.sched={d:t0,items};
+  facToday(items);S.sched={d:t0,items};
 }
 
 let calM=today().slice(0,7),sel=today();
@@ -249,15 +260,16 @@ const tn=i=>{const s=sub(i.sid),t=s&&s.topics.find(x=>x.id===i.tid);return t?t.t
 function project(end){
   const t0=today(),c=S.cfg,map={},st={};
   S.subjects.forEach(s=>s.topics.forEach(t=>{st[t.id]={done:t.done,rv:t.rv||0,next:t.next||null,sid:s.id}}));
+  S.fsubs.forEach(s=>s.topics.forEach(t=>{st[t.id]={done:t.done,rv:t.rv||0,next:t.next||null,sid:s.id,min:t.min,f:true}}));
   map[t0]=S.sched.items.filter(i=>st[i.tid]);
   S.sched.items.forEach(i=>{const x=st[i.tid];if(!x||i.done)return;if(i.type==='new'){x.done=true;x.rv=0;x.next=add(t0,INT[0])}else{x.rv++;x.next=INT[x.rv]?add(t0,INT[x.rv]):null}});
   for(let d=add(t0,1);d<=end;d=add(d,1)){
     let left=c.day;const items=[];
-    const due=Object.keys(st).filter(k=>st[k].done&&st[k].next&&st[k].next<=d).sort((a,b)=>st[a].next.localeCompare(st[b].next));
+    const due=Object.keys(st).filter(k=>st[k].done&&st[k].next&&st[k].next<=d&&!st[k].f).sort((a,b)=>st[a].next.localeCompare(st[b].next));
     for(const k of due){if(left<c.rev)break;items.push({type:'rev',sid:st[k].sid,tid:k,min:c.rev});left-=c.rev;const x=st[k];x.rv++;x.next=INT[x.rv]?add(d,INT[x.rv]):null}
     const q=S.subjects.map(s=>Object.keys(st).filter(k=>!st[k].done&&st[k].sid===s.id));let i=0;
     while(left>=c.study&&q.some(a=>a.length)){const a=q[i%q.length];i++;if(!a.length)continue;const k=a.shift();items.push({type:'new',sid:st[k].sid,tid:k,min:c.study});left-=c.study;const x=st[k];x.done=true;x.rv=0;x.next=add(d,INT[0])}
-    map[d]=items;
+    facSim(st,d).forEach(x=>items.push(x));map[d]=items;
   }
   return map;
 }
@@ -271,15 +283,15 @@ function vCal(){
   const fcn=d=>d<t0?((S.fcDays||{})[d]||0):S.cards.filter(c=>sub(c.sid)&&(d===t0?(!c.next||c.next<=t0):c.next===d)).length;
   const cells=ds.map(d=>{
     const out=d.slice(0,7)!==calM,fut=d>=t0,its=fut?(P[d]||[]).filter(i=>sub(i.sid)):[],lg=fut?[]:S.logs.filter(l=>l.d===d&&sub(l.sid)),mn=lg.reduce((a,l)=>a+l.min,0);
-    const chips=its.slice(0,3).map(i=>`<span class="chip ${i.done?'ok':''}" style="--c:${col(sub(i.sid))}">${i.type==='rev'?'↻ ':''}${esc(tn(i))}</span>`).join('');
+    const chips=[...its].sort((a,b)=>!!b.fac-!!a.fac).slice(0,3).map(i=>`<span class="chip ${i.done?'ok':''}" style="--c:${col(sub(i.sid))}">${i.type==='rev'?'↻ ':i.fac?'▶ ':''}${esc(tn(i))}</span>`).join('');
     const dots=(fut?its:lg).slice(0,5).map(i=>`<span class="dt" style="--c:${col(sub(i.sid))}"></span>`).join('');
-    return `<button class="cell${out?' out':''}${d===t0?' td':''}${d===sel?' sel':''}" data-a="sel" data-v="${d}"><span class="n">${+d.slice(8)}</span>${chips}${fcn(d)?`<span class="chip fcchip">▣ ${fcn(d)} card${fcn(d)>1?'s':''}</span>`:''}${its.length>3?`<span class="more">+${its.length-3}</span>`:''}${mn?`<span class="min">${fmt(mn)}</span>`:''}<span class="dots">${dots}${fcn(d)?'<span class="dt" style="--c:var(--acc)"></span>':''}</span></button>`}).join('');
+    return `<button class="cell${out?' out':''}${d===t0?' td':''}${d===sel?' sel':''}" data-a="sel" data-v="${d}"><span class="n">${+d.slice(8)}</span>${chips}${S.fsubs.filter(s=>s.due===d).map(s=>`<span class="chip" style="--c:${s.c}">⚑ Prazo ${esc(s.name)}</span>`).join('')}${fcn(d)?`<span class="chip fcchip">▣ ${fcn(d)} card${fcn(d)>1?'s':''}</span>`:''}${its.length>3?`<span class="more">+${its.length-3}</span>`:''}${mn?`<span class="min">${fmt(mn)}</span>`:''}<span class="dots">${dots}${fcn(d)?'<span class="dt" style="--c:var(--acc)"></span>':''}</span></button>`}).join('');
   const isT=sel===t0,isF=sel>=t0,its=isF?(P[sel]||[]).filter(i=>sub(i.sid)):[],tot=its.reduce((a,i)=>a+i.min,0);
-  const li=i=>{const s=sub(i.sid),lab=`<span class="${i.done?'d':''}"><span class="tg ${i.type==='new'?'n':'r'}">${i.type==='new'?'Estudar':'Revisar'}</span>${esc(tn(i))}<em>${esc(s.name)} · ${i.min} min</em></span>`;
+  const li=i=>{const s=sub(i.sid),lab=`<span class="${i.done?'d':''}"><span class="tg ${i.type==='new'?'n':'r'}">${i.type==='new'?(i.fac?'Assistir':'Estudar'):'Revisar'}</span>${esc(tn(i))}<em>${esc(s.name)} · ${i.min} min</em></span>`;
     return `<li style="--c:${col(s)}">${isT?`<label><input type="checkbox" data-a="ci" data-id="${i.id}" ${i.done?'checked':''}>${lab}</label>`:`<div>${lab}</div>`}</li>`};
   const past=S.logs.filter(l=>l.d===sel&&sub(l.sid)).map(l=>`<li style="--c:${col(sub(l.sid))}"><div><strong>${esc(sub(l.sid).name)}</strong><em>${fmt(l.min)}${l.q?` · ${l.ok}/${l.q} acertos`:''}</em></div></li>`).join('');
   const nfc=fcn(sel),fcli=nfc?`<li style="--c:var(--acc)"><div><span class="tg n">Flashcards</span>${nfc} card${nfc>1?'s':''} ${isF?'para revisar':'feitos'}${isF?`<em><button class="ghost" data-a="tab" data-v="flashcards" style="padding:2px 0;margin:0">Abrir flashcards</button></em>`:''}</div></li>`:'';
-  const list=(isF?its.map(li).join(''):past)+fcli;
+  const list=(isF?its.map(li).join(''):past)+fcli+S.fsubs.filter(s=>s.due===sel).map(s=>`<li style="--c:${s.c}"><div><span class="tg d">Prazo</span>${esc(s.name)}</div></li>`).join('');
   let due=0,newLeft=0;S.subjects.forEach(s=>s.topics.forEach(t=>{if(!t.done)newLeft++;else if(t.next&&t.next<=t0)due++}));
   const pend=due-S.sched.items.filter(i=>i.type==='rev'&&!i.done).length,pace=S.sched.items.filter(i=>i.type==='new').length;
   const mes=new Date(y,m-1,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
@@ -326,7 +338,7 @@ function vFlash(){
 let tmAlert=false,AC=null;
 const tmFmt=s=>{s=Math.max(0,Math.floor(s));return [Math.floor(s/3600),Math.floor(s/60)%60,s%60].map(x=>String(x).padStart(2,'0')).join(':')};
 function tmView(){
-  const T=S.timer,e=(Date.now()-T.start)/1000,tg=T.target*60;
+  const T=S.timer,e=tmEl(T),tg=T.target*60;
   if(tg){if(e<tg)return{txt:tmFmt(tg-e),sub:'restante de '+T.target+' min',p:e/tg*100};return{txt:'00:00:00',sub:'Tempo concluído · +'+tmFmt(e-tg),p:100}}
   return{txt:tmFmt(e),sub:'cronômetro de aula',p:(e%60)/60*100};
 }
@@ -342,7 +354,7 @@ function alarm(){
 setInterval(()=>{
   const T=S.timer;if(!T)return;const v=tmView(),a=document.getElementById('tclk');
   if(a){a.textContent=v.txt;document.getElementById('tsub').textContent=v.sub;document.getElementById('tring').style.setProperty('--p',v.p)}
-  if(T.target&&!T.fired&&Date.now()-T.start>=T.target*60000){T.fired=true;save();alarm()}
+  if(T.target&&!T.fired&&!T.paused&&tmEl(T)>=T.target*60){T.fired=true;save();alarm()}
   else if(tmAlert&&Math.floor(Date.now()/1000)%15===0)beep();
 },1000);
 
@@ -353,8 +365,8 @@ function vTimer(){
   const opts=S.subjects.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
   const ts=T&&sub(T.sid);
   return `<section class="panel"><h3>Cronômetro de aula</h3>
-  <div class="tring" id="tring" style="--p:${v.p}"><div><b id="tclk">${v.txt}</b><span id="tsub">${v.sub}</span></div></div>
-  ${T?`<p class="note" style="text-align:center">${ts?esc(ts.name):''}${T.target?` · meta de ${T.target} min`:''}</p><button class="big end" data-a="tmend">Finalizar aula</button><button class="ghost" style="width:100%" data-a="tmcancel">Descartar</button>`
+  <div class="tring${T&&T.paused?' ps':''}" id="tring" style="--p:${v.p}"><div><b id="tclk">${v.txt}</b><span id="tsub">${v.sub}</span></div></div>
+  ${T?`<p class="note" style="text-align:center">${ts?esc(ts.name):''}${T.target?` · meta de ${T.target} min`:''}</p>${T.paused?'<p class="note" style="text-align:center;margin:6px 0 0">Cronômetro pausado</p>':''}<button class="big pz" data-a="${T.paused?'tmresume':'tmpause'}">${T.paused?'Continuar':'Pausar'}</button><button class="big end" data-a="tmend">Finalizar aula</button><button class="ghost" style="width:100%" data-a="tmcancel">Descartar</button>`
   :`<div class="logform"><label class="w">Matéria<select id="tsid">${opts}</select></label><label class="w">Tempo de aula hoje, em minutos (opcional)<input id="tmin" type="number" min="1" max="720" placeholder="ex.: 50"></label></div><button class="big" data-a="tmstart">Iniciar aula</button><p class="note">Com um tempo definido, o relógio faz contagem regressiva e avisa quando zerar.</p>`}</section>`;
 }
 
@@ -432,7 +444,7 @@ function finExam(){
   const E=S.exam;if(!E||E.done)return;const per={};let tot=0,ok=0;
   E.items.forEach(it=>{const q=S.qs.find(x=>x.id===it.qid);if(!q)return;tot++;const c=it.pick!==null&&it.o[it.pick]===q.a;if(c)ok++;const p=per[q.sid]=per[q.sid]||{q:0,ok:0};p.q++;if(c)p.ok++});
   E.done=true;E.ok=ok;E.tot=tot;S.sims.push({id:E.id,d:E.d,sid:E.sid,n:tot,ok});
-  Object.keys(per).forEach(sid=>S.logs.push({id:uid(),sid,d:today(),min:0,q:per[sid].q,ok:per[sid].ok}));
+  
 }
 function vExam(){
   const E=S.exam;if(!E)return'';
@@ -464,6 +476,70 @@ function vSim(){
   <section class="panel" style="margin-top:16px"><h3>Banco de questões (${S.qs.length})</h3>${bank?`<ul>${bank}</ul>`:'<p class="empty" style="margin-top:10px">Nenhuma questão guardada ainda.</p>'}</section>`;
 }
 
+const facAvail=(from,due)=>{let n=0,x=from;for(let i=0;i<800&&x<=due;i++,x=add(x,1)){const w=new Date(x+'T00:00').getDay();if(!S.fcfg.wd||(w>0&&w<6))n++}return n};
+function facSim(st,d){
+  const F=S.fcfg,w=new Date(d+'T00:00').getDay(),we=w===0||w===6,items=[];
+  if(F.rv==='any'||(F.rv==='we'?we:!we))
+    Object.keys(st).filter(k=>st[k].f&&st[k].done&&st[k].next&&st[k].next<=d).sort((a,b)=>st[a].next.localeCompare(st[b].next)).forEach(k=>{const x=st[k];items.push({type:'rev',fac:true,sid:x.sid,tid:k,min:S.cfg.rev});x.rv++;x.next=INT[x.rv]?add(d,INT[x.rv]):null});
+  if(!F.wd||!we)S.fsubs.forEach(s=>{
+    const rem=s.topics.filter(t=>!st[t.id].done),rm=rem.reduce((a,t)=>a+t.min,0);if(!rem.length)return;
+    const bud=rm/(d>s.due?5:Math.max(1,facAvail(d,s.due)));let acc=0;
+    for(const t of rem){if(acc>=bud)break;items.push({type:'new',fac:true,sid:s.id,tid:t.id,min:t.min});acc+=t.min;const x=st[t.id];x.done=true;x.rv=0;x.next=add(d,INT[0])}});
+  return items;
+}
+function facToday(items){
+  const st={};S.fsubs.forEach(s=>s.topics.forEach(t=>{st[t.id]={done:t.done,rv:t.rv||0,next:t.next||null,sid:s.id,min:t.min,f:true}}));
+  facSim(st,today()).forEach(x=>items.push({id:uid(),done:false,...x}));
+}
+function vFac(){
+  const t0=today(),F=S.fcfg,dd=d=>Math.round((new Date(d+'T00:00')-new Date(t0+'T00:00'))/864e5);
+  const st=s=>{const rem=s.topics.filter(t=>!t.done),rm=rem.reduce((a,t)=>a+t.min,0),dl=dd(s.due),av=dl>=0?facAvail(t0,s.due):0,pace=rem.length?(av?Math.ceil(rm/av):rm):0;
+    return{rem,rm,dl,pace,L:!rem.length?'g':dl<0?'r':pace>240?'r':pace>120?'y':'g'}};
+  const dtx=n=>n<0?`prazo vencido há ${-n} dia${n<-1?'s':''}`:n===0?'o prazo é hoje':n===1?'falta 1 dia':`faltam ${n} dias`;
+  const list=[...S.fsubs].sort((a,b)=>a.due.localeCompare(b.due)),open=list.filter(s=>s.topics.some(t=>!t.done));
+  let ban;
+  if(!list.length)ban='<div class="fb">Cadastre uma matéria da faculdade e a data limite para assistir todas as videoaulas: o site distribui as aulas e as revisões no calendário.</div>';
+  else if(!open.length)ban='<div class="fb g">Todas as aulas cadastradas já foram assistidas.</div>';
+  else{const s=open[0],x=st(s);ban=`<div class="fb ${x.L}">${esc(s.name)}: ${dtx(x.dl)} (${br(s.due)}) para assistir ${x.rem.length} aula(s), ${fmt(x.rm)} no total.${x.dl>=0?` Ritmo necessário: cerca de ${x.pace} min por dia de aula.`:''}</div>`}
+  const cards=list.map(s=>{const x=st(s),n=s.topics.length,dn=n-x.rem.length,p=n?Math.round(dn/n*100):0;
+    return `<section class="card"><header data-rn="fsub" data-id="${s.id}" title="Clique com o botão direito para renomear"><h3><span class="dot" style="background:${s.c}"></span>${esc(s.name)}</h3><button class="x" data-a="delfsub" data-id="${s.id}" aria-label="Remover matéria">×</button></header>
+    ${bar(p)}<small>${dn} de ${n} aulas assistidas · restam ${fmt(x.rm)}</small>
+    <div class="fb ${x.L}" style="margin:10px 0 0">Prazo ${br(s.due)}: ${dtx(x.dl)}${x.rem.length&&x.dl>=0?` · ~${x.pace} min por dia de aula`:''}</div>
+    <ul>${s.topics.map(t=>`<li><label><input type="checkbox" data-a="fl" data-id="${s.id}" data-t="${t.id}" ${t.done?'checked':''}><span class="${t.done?'d':''}">${esc(t.t)}<em>${t.min} min</em></span></label><button class="x" data-a="dell" data-id="${s.id}" data-t="${t.id}" aria-label="Remover aula">×</button></li>`).join('')}</ul>
+    <form class="row" data-f="flesson" data-id="${s.id}"><input name="t" placeholder="Título da aula" required><input name="m" type="number" min="1" max="600" value="45" aria-label="Duração em minutos" style="width:78px;min-width:0;flex:none" required><input name="q" type="number" min="1" max="100" value="1" aria-label="Quantidade de aulas" style="width:70px;min-width:0;flex:none"><button>Incluir</button></form>
+    <form class="row" data-f="fdue" data-id="${s.id}"><input type="date" name="d" value="${s.due}" required><button>Alterar prazo</button></form></section>`}).join('');
+  return `${ban}<div class="two"><section class="panel"><h3>Nova matéria da faculdade</h3><form class="logform" data-f="fsub" style="margin-top:10px"><label class="w">Nome da matéria<input name="n" required></label><label class="w">Data limite para assistir todas as aulas<input type="date" name="d" required></label><button>Adicionar matéria</button></form>
+  <p class="note">Depois de criar a matéria, inclua as aulas: título, duração em minutos e quantidade (para criar várias aulas iguais de uma vez).</p></section>
+  <section class="panel"><h3>Regras do cronograma</h3><form class="logform" data-f="fcfg" style="margin-top:10px"><label class="w" style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" name="wd" ${F.wd?'checked':''} style="width:18px"> Assistir aulas somente em dias úteis (seg a sex)</label>
+  <label class="w">Revisões<select name="rv"><option value="we" ${F.rv==='we'?'selected':''}>Somente no fim de semana</option><option value="wd" ${F.rv==='wd'?'selected':''}>Somente em dias úteis (nunca no fim de semana)</option><option value="any" ${F.rv==='any'?'selected':''}>Em qualquer dia</option></select></label><button>Salvar regras</button></form>
+  <p class="note">As aulas são distribuídas até a data limite e aparecem no calendário do Cronograma, junto das revisões (1, 3, 7, 15 e 30 dias depois, no tempo de revisão do Cronograma). Revisões que caem num dia não permitido passam para o próximo dia permitido.</p></section></div>
+  <div class="cards" style="margin-top:16px">${cards}</div>`;
+}
+
+const tmEl=T=>((T.acc||0)+(T.paused?0:Date.now()-(T.run||T.start)))/1000;
+const DEFTAB={cronograma:'Cronograma',materias:'Matérias',flashcards:'Flashcards',faculdade:'Faculdade',desempenho:'Desempenho'};
+function renameBox(x,y,cur,cb){
+  const old=document.getElementById('rnbox');if(old)old.remove();
+  const d=document.createElement('div');d.id='rnbox';d.className='rnbox';
+  d.style.left=Math.max(8,Math.min(x,innerWidth-256))+'px';d.style.top=Math.max(8,Math.min(y,innerHeight-130))+'px';
+  d.innerHTML='<label>Renomear<input type="text" maxlength="40"></label><div><button type="button" class="rn-c">Cancelar</button><button type="button" class="rn-s">Salvar</button></div>';
+  document.body.appendChild(d);
+  const inp=d.querySelector('input'),close=()=>d.remove(),ok=()=>{const v=inp.value.trim();if(v)cb(v);close()};
+  inp.value=cur;inp.focus();inp.select();
+  d.querySelector('.rn-c').onclick=close;d.querySelector('.rn-s').onclick=ok;
+  inp.onkeydown=e=>{if(e.key==='Enter')ok();else if(e.key==='Escape')close()};
+}
+document.addEventListener('contextmenu',e=>{
+  const el=e.target.closest('[data-rn]');if(!el)return;
+  e.preventDefault();const k=el.dataset.rn,id=el.dataset.id;let cur,set;
+  if(k==='tab'){cur=(S.tabNames||{})[id]||DEFTAB[id];set=v=>{S.tabNames=S.tabNames||{};S.tabNames[id]=v}}
+  else{const s=(k==='fsub'?S.fsubs:S.subjects).find(x=>x.id===id);if(!s)return;cur=s.name;set=v=>{s.name=v}}
+  renameBox(e.clientX,e.clientY,cur,v=>{set(v);save();render()});
+});
+document.addEventListener('mousedown',e=>{const b=document.getElementById('rnbox');if(b&&!b.contains(e.target))b.remove()});
+
+try{if(S.sched&&S.sched.items){const L=new Set(S.sched.items.map(i=>i.lid).filter(Boolean));if(L.size){S.logs=S.logs.filter(l=>!L.has(l.id));S.sched.items.forEach(i=>{delete i.lid});save()}}}catch(e){}
+
 function vCron(){
   const t0=today(),c=S.cfg;
   if(!S.sched||S.sched.d!==t0||!S.sched.items.length){gen();save()}
@@ -493,7 +569,7 @@ function vCron(){
 function vMat(){
   let h=`<form class="row" data-f="sub"><input name="n" placeholder="Nome da matéria, ex.: Direito Penal" required><button>Adicionar matéria</button></form>`;
   if(!S.subjects.length)return h+`<p class="empty">Nenhuma matéria ainda. Adicione a primeira e liste os tópicos que precisa estudar: o percentual de avanço sobe conforme você marca cada tópico como concluído.</p>`;
-  return h+'<div class="cards">'+S.subjects.map(s=>`<section class="card"><header><h3><span class="dot" style="background:${col(s)}"></span>${esc(s.name)}</h3><button class="x" data-a="delsub" data-id="${s.id}" aria-label="Remover matéria">×</button></header>
+  return h+'<div class="cards">'+S.subjects.map(s=>`<section class="card"><header data-rn="sub" data-id="${s.id}" title="Clique com o botão direito para renomear"><h3><span class="dot" style="background:${col(s)}"></span>${esc(s.name)}</h3><button class="x" data-a="delsub" data-id="${s.id}" aria-label="Remover matéria">×</button></header>
   ${bar(pct(s),col(s))}<small>${done(s)} de ${s.topics.length} tópicos concluídos</small>
   <ul>${s.topics.map(t=>`<li><label><input type="checkbox" data-a="tt" data-id="${s.id}" data-t="${t.id}" ${t.done?'checked':''}><span class="${t.done?'d':''}">${esc(t.t)}</span></label><button class="x" data-a="deltop" data-id="${s.id}" data-t="${t.id}" aria-label="Remover tópico">×</button></li>`).join('')}</ul>
   <form class="row" data-f="top" data-id="${s.id}"><input name="n" placeholder="Novo tópico" required><button>Incluir</button></form></section>`).join('')+'</div>';
@@ -514,7 +590,7 @@ function vPerf(){
   const opts=S.subjects.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
   const maxm=Math.max(1,...S.subjects.map(s=>L.filter(l=>l.sid===s.id).reduce((a,l)=>a+l.min,0)));
   const rows=S.subjects.map(s=>{const ls=L.filter(l=>l.sid===s.id),m=ls.reduce((a,l)=>a+l.min,0),qq=ls.reduce((a,l)=>a+l.q,0),oo=ls.reduce((a,l)=>a+l.ok,0);
-    return `<div class="sr"><span>${esc(s.name)}</span>${bar(qq?Math.round(oo/qq*100):0,col(s))}<span>${fmt(m)}</span></div>`}).join('');
+    return `<div class="sr"><span data-rn="sub" data-id="${s.id}">${esc(s.name)}</span>${bar(qq?Math.round(oo/qq*100):0,col(s))}<span>${fmt(m)}</span></div>`}).join('');
   const hist=[...L].sort((a,b)=>b.d.localeCompare(a.d)).slice(0,30).map(l=>{const s=sub(l.sid);
     return `<li><div class="hl"><div><strong>${esc(s?s.name:'Matéria removida')}</strong><em>${new Date(l.d+'T00:00').toLocaleDateString('pt-BR')} · ${fmt(l.min)}${l.q?` · ${l.ok}/${l.q} acertos`:''}</em></div></div><button class="x" data-a="dellog" data-id="${l.id}" aria-label="Remover registro">×</button></li>`}).join('');
   return `<div class="stats"><div class="stat"><strong>${fmt(tm)}</strong><span>tempo total estudado</span></div><div class="stat"><strong>${L.length}</strong><span>sessões registradas</span></div><div class="stat"><strong class="${q?(ok/q*100>=70?'g':ok/q*100>=40?'y':'r'):''}">${q?Math.round(ok/q*100)+'%':'–'}</strong><span>acerto em questões</span></div></div>
@@ -531,10 +607,10 @@ function vPerf(){
 
 function render(){
   const T=S.subjects.reduce((a,s)=>a+s.topics.length,0),D=S.subjects.reduce((a,s)=>a+done(s),0),p=T?Math.round(D/T*100):0;
-  const tabs=[['cronograma','Cronograma'],['materias','Matérias'],['flashcards','Flashcards'],['desempenho','Desempenho']];
+  const tabs=[['cronograma','Cronograma'],['materias','Matérias'],['flashcards','Flashcards'],['faculdade','Faculdade'],['desempenho','Desempenho']];
   document.getElementById('app').innerHTML=`<div class="top"><div><h1>Meus estudos</h1><p class="sub">${D} de ${T} tópicos concluídos${T?' · desempenho '+(p>=70?'ótimo':p>=40?'mediano':'ruim'):''}</p></div><div class="ring ${p>=70?'g':p>=40?'y':'r'}" style="--p:${p}" role="img" aria-label="Avanço geral: ${p}%"><b>${p}%</b></div></div>
-  ${tmAlert?'<div class="alarm" role="alert"><span>⏰ Tempo de aula concluído!</span><button data-a="tmok">Ok</button></div>':''}<nav role="tablist">${tabs.map(t=>`<button role="tab" aria-selected="${tab===t[0]}" data-a="tab" data-v="${t[0]}">${t[1]}</button>`).join('')}</nav>
-  ${tab==='cronograma'?vCal():tab==='materias'?vMat():tab==='flashcards'?vFlash():vPerf()}`;
+  ${tmAlert?'<div class="alarm" role="alert"><span>⏰ Tempo de aula concluído!</span><button data-a="tmok">Ok</button></div>':''}<nav role="tablist">${tabs.map(t=>`<button role="tab" aria-selected="${tab===t[0]}" data-a="tab" data-v="${t[0]}" data-rn="tab" data-id="${t[0]}">${esc((S.tabNames||{})[t[0]]||t[1])}</button>`).join('')}</nav>
+  ${tab==='cronograma'?vCal():tab==='materias'?vMat():tab==='flashcards'?vFlash():tab==='faculdade'?vFac():vPerf()}`;
 }
 
 document.addEventListener('click',e=>{
@@ -546,14 +622,16 @@ document.addEventListener('click',e=>{
   else if(a==='ci'){const it=S.sched.items.find(x=>x.id===id),sb=it&&sub(it.sid),t=sb&&sb.topics.find(x=>x.id===it.tid);if(t){const t0=today();
     if(!it.done){it.prev={done:t.done,rv:t.rv||0,next:t.next||null};
       if(it.type==='new'){t.done=true;t.rv=0;t.next=add(t0,INT[0])}else{t.rv=(t.rv||0)+1;t.next=INT[t.rv]?add(t0,INT[t.rv]):null}
-      it.lid=uid();S.logs.push({id:it.lid,sid:it.sid,d:t0,min:it.min,q:0,ok:0});it.done=true}
+      it.done=true}
     else{Object.assign(t,it.prev);S.logs=S.logs.filter(x=>x.id!==it.lid);it.done=false}}}
   else if(a==='regen')gen();
   else if(a==='tmstart'){const ss=document.getElementById('tsid'),tm=document.getElementById('tmin');if(!ss||!ss.value)return;
-    S.timer={sid:ss.value,start:Date.now(),target:Math.max(0,Math.floor(+tm.value||0)),fired:false};tmAlert=false;
+    S.timer={sid:ss.value,start:Date.now(),run:Date.now(),acc:0,paused:false,target:Math.max(0,Math.floor(+tm.value||0)),fired:false};tmAlert=false;
     try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();AC.resume()}catch(e){}
     try{if(window.Notification&&Notification.permission==='default')Notification.requestPermission()}catch(e){}}
-  else if(a==='tmend'){const T=S.timer;if(T){const sec=(Date.now()-T.start)/1000;if(sec>=30&&sub(T.sid))S.logs.push({id:uid(),sid:T.sid,d:today(),min:Math.max(1,Math.round(sec/60)),q:0,ok:0})}S.timer=null;tmAlert=false;document.title='Meus estudos'}
+  else if(a==='tmend'){const T=S.timer;if(T){const sec=tmEl(T);if(sec>=30&&sub(T.sid))S.logs.push({id:uid(),sid:T.sid,d:today(),min:Math.max(1,Math.round(sec/60)),q:0,ok:0})}S.timer=null;tmAlert=false;document.title='Meus estudos'}
+  else if(a==='tmpause'){const T=S.timer;if(T&&!T.paused){T.acc=(T.acc||0)+Date.now()-(T.run||T.start);T.paused=true}}
+  else if(a==='tmresume'){const T=S.timer;if(T&&T.paused){T.run=Date.now();T.paused=false}}
   else if(a==='tmcancel'){S.timer=null;tmAlert=false;document.title='Meus estudos'}
   else if(a==='tmok'){tmAlert=false;document.title='Meus estudos'}
   else if(a==='simgen'){const g=x=>document.getElementById(x);if(!g('simf'))return;genQs(g('sims').value,g('simf').files[0]||null,g('simt').value,+g('simn').value||10);return}
@@ -563,6 +641,9 @@ document.addEventListener('click',e=>{
   else if(a==='simfin')finExam();
   else if(a==='simnew')S.exam=null;
   else if(a==='delq')S.qs=S.qs.filter(x=>x.id!==id);
+  else if(a==='fl'){const sb=S.fsubs.find(x=>x.id===id),t=sb.topics.find(x=>x.id===b.dataset.t);t.done=!t.done;t.rv=0;t.next=t.done?add(today(),INT[0]):null;gen()}
+  else if(a==='dell'){const sb=S.fsubs.find(x=>x.id===id);sb.topics=sb.topics.filter(x=>x.id!==b.dataset.t);gen()}
+  else if(a==='delfsub'){if(!confirm('Remover esta matéria e todas as aulas?'))return;S.fsubs=S.fsubs.filter(x=>x.id!==id);gen()}
   else if(a==='fshow')fshow=true;
   else if(a==='ff'){fsel=b.dataset.v;fshow=false}
   else if(a==='frate'){const cd=S.cards.find(x=>x.id===id);if(cd){cd.lv=b.dataset.l;cd.n=(cd.n||0)+1;S.fcCount=(S.fcCount||0)+1;S.fcDays=S.fcDays||{};S.fcDays[today()]=(S.fcDays[today()]||0)+1;cd.next=add(today(),LV[cd.lv].d)}fshow=false}
@@ -580,6 +661,10 @@ document.addEventListener('click',e=>{
 document.addEventListener('submit',e=>{
   e.preventDefault();const f=e.target,k=f.dataset.f,v=n=>f.elements[n]?f.elements[n].value.trim():'';
   if(k==='cfg'){S.cfg={day:Math.max(10,+v('day')||120),study:Math.max(5,+v('study')||45),rev:Math.max(5,+v('rev')||15)};gen()}
+  else if(k==='fsub'){S.fsubs.push({id:uid(),name:v('n'),due:v('d'),c:COLORS[(S.fsubs.length+3)%COLORS.length],topics:[]});gen()}
+  else if(k==='flesson'){const sb=S.fsubs.find(x=>x.id===f.dataset.id),q=Math.min(100,Math.max(1,Math.floor(+v('q')||1))),m=Math.max(1,Math.floor(+v('m')||45));for(let i=1;i<=q;i++)sb.topics.push({id:uid(),t:q>1?v('t')+' '+i:v('t'),min:m,done:false,rv:0,next:null});gen()}
+  else if(k==='fdue'){S.fsubs.find(x=>x.id===f.dataset.id).due=v('d');gen()}
+  else if(k==='fcfg'){S.fcfg={wd:f.elements.wd.checked,rv:v('rv')};gen()}
   else if(k==='card'){S.cards.push({id:uid(),sid:v('s'),q:v('q'),a:v('a'),next:null,lv:null,n:0});fsel=v('s');fshow=false}
   else if(k==='sub')S.subjects.push({id:uid(),name:v('n'),c:COLORS[S.subjects.length%COLORS.length],topics:[]});
   else if(k==='top')sub(f.dataset.id).topics.push({id:uid(),t:v('n'),done:false});
