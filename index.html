@@ -214,6 +214,7 @@ details.dq summary{cursor:pointer;font-weight:600}
 .rnbox div{display:flex;gap:8px;justify-content:flex-end}
 .rnbox button{border:0;border-radius:99px;padding:7px 14px;font-weight:600;cursor:pointer;background:var(--track);color:var(--ink)}
 .rnbox .rn-s{background:var(--acc);color:#fff}
+.ghost.pt{padding:4px 10px;margin:0;font-size:12px;border:1px solid var(--line);border-radius:99px;white-space:nowrap;flex:none;align-self:center}
 </style>
 </head>
 <body>
@@ -243,12 +244,12 @@ const br=s=>new Date(s+'T00:00').toLocaleDateString('pt-BR',{weekday:'short',day
 
 function gen(){
   const t0=today(),c=S.cfg;
-  const keep=(S.sched&&S.sched.d===t0)?S.sched.items.filter(i=>i.done):[];
+  const keep=(S.sched&&S.sched.d===t0)?S.sched.items.filter(i=>i.done||i.part):[];
   let left=c.day-keep.filter(i=>!i.fac).reduce((a,i)=>a+i.min,0);const items=[...keep];
   const due=[];S.subjects.forEach(s=>s.topics.forEach(t=>{if(t.done&&t.next&&t.next<=t0)due.push({s,t})}));
   due.sort((a,b)=>a.t.next.localeCompare(b.t.next));
   for(const x of due){if(left<c.rev)break;items.push({id:uid(),sid:x.s.id,tid:x.t.id,type:'rev',min:c.rev,done:false});left-=c.rev}
-  const q=S.subjects.map(s=>s.topics.filter(t=>!t.done).map(t=>({s,t})));let i=0;
+  const pk=new Set(keep.filter(i=>i.part).map(i=>i.tid)),q=S.subjects.map(s=>s.topics.filter(t=>!t.done&&!pk.has(t.id)).sort((a,b)=>(b.wip?1:0)-(a.wip?1:0)).map(t=>({s,t})));let i=0;
   while(left>=c.study&&q.some(a=>a.length)){const a=q[i%q.length];i++;if(!a.length)continue;const x=a.shift();items.push({id:uid(),sid:x.s.id,tid:x.t.id,type:'new',min:c.study,done:false});left-=c.study}
   facToday(items);S.sched={d:t0,items};
 }
@@ -259,15 +260,15 @@ const tn=i=>{const s=sub(i.sid),t=s&&s.topics.find(x=>x.id===i.tid);return t?t.t
 
 function project(end){
   const t0=today(),c=S.cfg,map={},st={};
-  S.subjects.forEach(s=>s.topics.forEach(t=>{st[t.id]={done:t.done,rv:t.rv||0,next:t.next||null,sid:s.id}}));
+  S.subjects.forEach(s=>s.topics.forEach(t=>{st[t.id]={done:t.done,rv:t.rv||0,next:t.next||null,sid:s.id,wip:t.wip||0}}));
   S.fsubs.forEach(s=>s.topics.forEach(t=>{st[t.id]={done:t.done,rv:t.rv||0,next:t.next||null,sid:s.id,min:t.min,f:true}}));
   map[t0]=S.sched.items.filter(i=>st[i.tid]);
-  S.sched.items.forEach(i=>{const x=st[i.tid];if(!x||i.done)return;if(i.type==='new'){x.done=true;x.rv=0;x.next=add(t0,INT[0])}else{x.rv++;x.next=INT[x.rv]?add(t0,INT[x.rv]):null}});
+  S.sched.items.forEach(i=>{const x=st[i.tid];if(!x||i.done||i.part)return;if(i.type==='new'){x.done=true;x.rv=0;x.next=add(t0,INT[0])}else{x.rv++;x.next=INT[x.rv]?add(t0,INT[x.rv]):null}});
   for(let d=add(t0,1);d<=end;d=add(d,1)){
     let left=c.day;const items=[];
     const due=Object.keys(st).filter(k=>st[k].done&&st[k].next&&st[k].next<=d&&!st[k].f).sort((a,b)=>st[a].next.localeCompare(st[b].next));
     for(const k of due){if(left<c.rev)break;items.push({type:'rev',sid:st[k].sid,tid:k,min:c.rev});left-=c.rev;const x=st[k];x.rv++;x.next=INT[x.rv]?add(d,INT[x.rv]):null}
-    const q=S.subjects.map(s=>Object.keys(st).filter(k=>!st[k].done&&st[k].sid===s.id));let i=0;
+    const q=S.subjects.map(s=>Object.keys(st).filter(k=>!st[k].done&&st[k].sid===s.id).sort((a,b)=>(st[b].wip?1:0)-(st[a].wip?1:0)));let i=0;
     while(left>=c.study&&q.some(a=>a.length)){const a=q[i%q.length];i++;if(!a.length)continue;const k=a.shift();items.push({type:'new',sid:st[k].sid,tid:k,min:c.study});left-=c.study;const x=st[k];x.done=true;x.rv=0;x.next=add(d,INT[0])}
     facSim(st,d).forEach(x=>items.push(x));map[d]=items;
   }
@@ -287,8 +288,8 @@ function vCal(){
     const dots=(fut?its:lg).slice(0,5).map(i=>`<span class="dt" style="--c:${col(sub(i.sid))}"></span>`).join('');
     return `<button class="cell${out?' out':''}${d===t0?' td':''}${d===sel?' sel':''}" data-a="sel" data-v="${d}"><span class="n">${+d.slice(8)}</span>${chips}${S.fsubs.filter(s=>s.due===d).map(s=>`<span class="chip" style="--c:${s.c}">⚑ Prazo ${esc(s.name)}</span>`).join('')}${fcn(d)?`<span class="chip fcchip">▣ ${fcn(d)} card${fcn(d)>1?'s':''}</span>`:''}${its.length>3?`<span class="more">+${its.length-3}</span>`:''}${mn?`<span class="min">${fmt(mn)}</span>`:''}<span class="dots">${dots}${fcn(d)?'<span class="dt" style="--c:var(--acc)"></span>':''}</span></button>`}).join('');
   const isT=sel===t0,isF=sel>=t0,its=isF?(P[sel]||[]).filter(i=>sub(i.sid)):[],tot=its.reduce((a,i)=>a+i.min,0);
-  const li=i=>{const s=sub(i.sid),lab=`<span class="${i.done?'d':''}"><span class="tg ${i.type==='new'?'n':'r'}">${i.type==='new'?(i.fac?'Assistir':'Estudar'):'Revisar'}</span>${esc(tn(i))}<em>${esc(s.name)} · ${i.min} min</em></span>`;
-    return `<li style="--c:${col(s)}">${isT?`<label><input type="checkbox" data-a="ci" data-id="${i.id}" ${i.done?'checked':''}>${lab}</label>`:`<div>${lab}</div>`}</li>`};
+  const li=i=>{const s=sub(i.sid),lab=`<span class="${i.done?'d':''}"><span class="tg ${i.type==='new'?'n':'r'}">${i.type==='new'?(i.fac?'Assistir':'Estudar'):'Revisar'}</span>${esc(tn(i))}<em>${esc(s.name)} · ${i.min} min${i.part?' · em andamento: continua nos próximos dias':''}</em></span>`;
+    return `<li style="--c:${col(s)}">${isT?`<label><input type="checkbox" data-a="ci" data-id="${i.id}" ${i.done?'checked':''}>${lab}</label>${i.type==='new'&&!i.done?`<button class="ghost pt" data-a="cp" data-id="${i.id}">${i.part?'Desfazer':'Ainda não terminei'}</button>`:''}`:`<div>${lab}</div>`}</li>`};
   const past=S.logs.filter(l=>l.d===sel&&sub(l.sid)).map(l=>`<li style="--c:${col(sub(l.sid))}"><div><strong>${esc(sub(l.sid).name)}</strong><em>${fmt(l.min)}${l.q?` · ${l.ok}/${l.q} acertos`:''}</em></div></li>`).join('');
   const nfc=fcn(sel),fcli=nfc?`<li style="--c:var(--acc)"><div><span class="tg n">Flashcards</span>${nfc} card${nfc>1?'s':''} ${isF?'para revisar':'feitos'}${isF?`<em><button class="ghost" data-a="tab" data-v="flashcards" style="padding:2px 0;margin:0">Abrir flashcards</button></em>`:''}</div></li>`:'';
   const list=(isF?its.map(li).join(''):past)+fcli+S.fsubs.filter(s=>s.due===sel).map(s=>`<li style="--c:${s.c}"><div><span class="tg d">Prazo</span>${esc(s.name)}</div></li>`).join('');
@@ -488,7 +489,7 @@ function facSim(st,d){
   return items;
 }
 function facToday(items){
-  const st={};S.fsubs.forEach(s=>s.topics.forEach(t=>{st[t.id]={done:t.done,rv:t.rv||0,next:t.next||null,sid:s.id,min:t.min,f:true}}));
+  const st={};S.fsubs.forEach(s=>s.topics.forEach(t=>{st[t.id]={done:t.done||items.some(i=>i.part&&i.tid===t.id),rv:t.rv||0,next:t.next||null,sid:s.id,min:t.min,f:true}}));
   facSim(st,today()).forEach(x=>items.push({id:uid(),done:false,...x}));
 }
 function vFac(){
@@ -505,7 +506,7 @@ function vFac(){
     return `<section class="card"><header data-rn="fsub" data-id="${s.id}" title="Clique com o botão direito para renomear"><h3><span class="dot" style="background:${s.c}"></span>${esc(s.name)}</h3><button class="x" data-a="delfsub" data-id="${s.id}" aria-label="Remover matéria">×</button></header>
     ${bar(p)}<small>${dn} de ${n} aulas assistidas · restam ${fmt(x.rm)}</small>
     <div class="fb ${x.L}" style="margin:10px 0 0">Prazo ${br(s.due)}: ${dtx(x.dl)}${x.rem.length&&x.dl>=0?` · ~${x.pace} min por dia de aula`:''}</div>
-    <ul>${s.topics.map(t=>`<li><label><input type="checkbox" data-a="fl" data-id="${s.id}" data-t="${t.id}" ${t.done?'checked':''}><span class="${t.done?'d':''}">${esc(t.t)}<em>${t.min} min</em></span></label><button class="x" data-a="dell" data-id="${s.id}" data-t="${t.id}" aria-label="Remover aula">×</button></li>`).join('')}</ul>
+    <ul>${s.topics.map(t=>`<li><label><input type="checkbox" data-a="fl" data-id="${s.id}" data-t="${t.id}" ${t.done?'checked':''}><span class="${t.done?'d':''}">${esc(t.t)}<em>${t.min} min${!t.done&&t.wip?' · em andamento':''}</em></span></label><button class="x" data-a="dell" data-id="${s.id}" data-t="${t.id}" aria-label="Remover aula">×</button></li>`).join('')}</ul>
     <form class="row" data-f="flesson" data-id="${s.id}"><input name="t" placeholder="Título da aula" required><input name="m" type="number" min="1" max="600" value="45" aria-label="Duração em minutos" style="width:78px;min-width:0;flex:none" required><input name="q" type="number" min="1" max="100" value="1" aria-label="Quantidade de aulas" style="width:70px;min-width:0;flex:none"><button>Incluir</button></form>
     <form class="row" data-f="fdue" data-id="${s.id}"><input type="date" name="d" value="${s.due}" required><button>Alterar prazo</button></form></section>`}).join('');
   return `${ban}<div class="two"><section class="panel"><h3>Nova matéria da faculdade</h3><form class="logform" data-f="fsub" style="margin-top:10px"><label class="w">Nome da matéria<input name="n" required></label><label class="w">Data limite para assistir todas as aulas<input type="date" name="d" required></label><button>Adicionar matéria</button></form>
@@ -571,7 +572,7 @@ function vMat(){
   if(!S.subjects.length)return h+`<p class="empty">Nenhuma matéria ainda. Adicione a primeira e liste os tópicos que precisa estudar: o percentual de avanço sobe conforme você marca cada tópico como concluído.</p>`;
   return h+'<div class="cards">'+S.subjects.map(s=>`<section class="card"><header data-rn="sub" data-id="${s.id}" title="Clique com o botão direito para renomear"><h3><span class="dot" style="background:${col(s)}"></span>${esc(s.name)}</h3><button class="x" data-a="delsub" data-id="${s.id}" aria-label="Remover matéria">×</button></header>
   ${bar(pct(s),col(s))}<small>${done(s)} de ${s.topics.length} tópicos concluídos</small>
-  <ul>${s.topics.map(t=>`<li><label><input type="checkbox" data-a="tt" data-id="${s.id}" data-t="${t.id}" ${t.done?'checked':''}><span class="${t.done?'d':''}">${esc(t.t)}</span></label><button class="x" data-a="deltop" data-id="${s.id}" data-t="${t.id}" aria-label="Remover tópico">×</button></li>`).join('')}</ul>
+  <ul>${s.topics.map(t=>`<li><label><input type="checkbox" data-a="tt" data-id="${s.id}" data-t="${t.id}" ${t.done?'checked':''}><span class="${t.done?'d':''}">${esc(t.t)}${!t.done&&t.wip?'<em>em andamento</em>':''}</span></label><button class="x" data-a="deltop" data-id="${s.id}" data-t="${t.id}" aria-label="Remover tópico">×</button></li>`).join('')}</ul>
   <form class="row" data-f="top" data-id="${s.id}"><input name="n" placeholder="Novo tópico" required><button>Incluir</button></form></section>`).join('')+'</div>';
 }
 
@@ -620,7 +621,7 @@ document.addEventListener('click',e=>{
   else if(a==='delsub'){if(!confirm('Remover esta matéria e todos os seus tópicos?'))return;S.subjects=S.subjects.filter(x=>x.id!==id)}
   else if(a==='tt'){const t=s.topics.find(x=>x.id===b.dataset.t);t.done=!t.done;t.rv=0;t.next=t.done?add(today(),INT[0]):null}
   else if(a==='ci'){const it=S.sched.items.find(x=>x.id===id),sb=it&&sub(it.sid),t=sb&&sb.topics.find(x=>x.id===it.tid);if(t){const t0=today();
-    if(!it.done){it.prev={done:t.done,rv:t.rv||0,next:t.next||null};
+    if(!it.done){it.prev={done:t.done,rv:t.rv||0,next:t.next||null,wip:t.wip||0};it.part=false;
       if(it.type==='new'){t.done=true;t.rv=0;t.next=add(t0,INT[0])}else{t.rv=(t.rv||0)+1;t.next=INT[t.rv]?add(t0,INT[t.rv]):null}
       it.done=true}
     else{Object.assign(t,it.prev);S.logs=S.logs.filter(x=>x.id!==it.lid);it.done=false}}}
@@ -644,6 +645,7 @@ document.addEventListener('click',e=>{
   else if(a==='fl'){const sb=S.fsubs.find(x=>x.id===id),t=sb.topics.find(x=>x.id===b.dataset.t);t.done=!t.done;t.rv=0;t.next=t.done?add(today(),INT[0]):null;gen()}
   else if(a==='dell'){const sb=S.fsubs.find(x=>x.id===id);sb.topics=sb.topics.filter(x=>x.id!==b.dataset.t);gen()}
   else if(a==='delfsub'){if(!confirm('Remover esta matéria e todas as aulas?'))return;S.fsubs=S.fsubs.filter(x=>x.id!==id);gen()}
+  else if(a==='cp'){const it=S.sched.items.find(x=>x.id===id),sb=it&&sub(it.sid),t=sb&&sb.topics.find(x=>x.id===it.tid);if(t&&it.type==='new'&&!it.done){it.part=!it.part;t.wip=Math.max(0,(t.wip||0)+(it.part?1:-1))}}
   else if(a==='fshow')fshow=true;
   else if(a==='ff'){fsel=b.dataset.v;fshow=false}
   else if(a==='frate'){const cd=S.cards.find(x=>x.id===id);if(cd){cd.lv=b.dataset.l;cd.n=(cd.n||0)+1;S.fcCount=(S.fcCount||0)+1;S.fcDays=S.fcDays||{};S.fcDays[today()]=(S.fcDays[today()]||0)+1;cd.next=add(today(),LV[cd.lv].d)}fshow=false}
